@@ -13,16 +13,14 @@ impl SyntaxTree {
     }
 }
 
-
-
 #[derive(Debug)]
 pub enum Node {
+    Function(FunctionNode),
     Unary(UnaryNode),
     Number(NumberNode),
     Binary(BinaryNode),
     Enclosed(EnclosedNode),
 }
-
 
 #[derive(Debug)]
 pub struct BinaryNode {
@@ -42,7 +40,6 @@ impl BinaryNode {
     }
 }
 
-
 #[derive(Debug)]
 pub struct EnclosedNode {
     pub left: Token,
@@ -61,7 +58,6 @@ impl EnclosedNode {
     }
 }
 
-
 #[derive(Debug)]
 pub struct NumberNode {
     pub token: Token,
@@ -75,7 +71,6 @@ impl NumberNode {
     }
 }
 
-
 #[derive(Debug)]
 pub struct UnaryNode {
     pub token: Token,
@@ -88,6 +83,68 @@ impl UnaryNode {
         Self {
             token,
             expression: Box::new(expression),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct FunctionNode {
+    pub kind: FunctionKind,
+    pub token: Token,
+    pub args: Vec<Node>,
+}
+
+impl FunctionNode {
+    #[inline]
+    pub fn new(kind: FunctionKind, token: Token, args: Vec<Node>) -> Self {
+        Self { kind, token, args }
+    }
+}
+
+#[derive(Debug)]
+pub enum FunctionKind {
+    // single arg functions
+    Cos,
+    Sin,
+    Tan,
+    Sinh,
+    Cosh,
+    Tanh,
+    Sqrt,
+    Ln,
+    
+    // two arg functions
+    Pow,
+    Root,
+    Log,
+    BadValue,
+}
+
+impl FunctionKind {
+    pub fn from(value: &str) -> Self {
+        use FunctionKind::*;
+        match value {
+            "sin" => Sin,
+            "cos" => Cos,
+            "tan" => Tan,
+            "sinh" => Sinh,
+            "cosh" => Cosh,
+            "tanh" => Tanh,
+            "sqrt" => Sqrt,
+            "ln" => Ln,
+            "pow" => Pow,
+            "root" => Root,
+            "log" => Log,
+            _ => BadValue,
+        }
+    }
+
+    pub fn get_args_count(&self) -> u8 {
+        use FunctionKind::*;
+        match self {
+            Sin | Cos | Tan | Sinh | Cosh | Tanh | Sqrt | Ln => 1,
+            Pow | Root | Log => 2,
+            BadValue => 0,
         }
     }
 }

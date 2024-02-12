@@ -1,44 +1,16 @@
 use std::mem;
 
 use crate::{
-    ast::{BinaryNode, EnclosedNode, Node, NumberNode, SyntaxTree, UnaryNode},
+    ast::{
+        BinaryNode, EnclosedNode, FunctionKind, FunctionNode, Node, NumberNode, SyntaxTree,
+        UnaryNode,
+    },
     lexer::Lexer,
     token::{Token, TokenKind},
 };
 
-macro_rules! boolean_match {
-    ($value:expr, $elem:expr) => {
-        $value == $elem
-    };
-    ($value:expr, $elem:expr, $($rest:expr),+) => {
-        $value == $elem || boolean_match!($value, $($rest),+)
-    };
-}
-
-/// This is a macro that generates functions that correspond to operator precedence for binary operators.
-/// I added a "mock dsl" syntax to make the usage more readable.
-macro_rules! generate_binary_parse_level {
-    (
-        create --> fn $name:ident(&mut self) -> Node;
-        next_level --> self.$next_function:ident();
-        matches_on --> ($elem:expr $(, $rest:expr)*);
-    )  => {
-        fn $name(&mut self) -> Node {
-            let mut left = self.$next_function();
-
-            while boolean_match!(self.current().kind, $elem $(, $rest)*) {
-                let operator = self.next_token();
-                let right = self.$next_function();
-                left = Node::Binary(BinaryNode::new(operator, left, right));
-            }
-
-            left
-        }
-    };
-}
-
 pub struct Parser {
-    diagnostics: Vec<String>,
+    errors: Vec<String>,
     tokens: Vec<Token>,
     position: usize,
 }
@@ -49,10 +21,10 @@ impl Parser {
         let mut parser = Self::new(tokens);
         let root = parser.parse_top_level();
         let eof = parser.get_match(TokenKind::EndOfFile);
-        if parser.diagnostics.is_empty() {
+        if parser.errors.is_empty() {
             Ok(SyntaxTree::new(root, eof))
         } else {
-            Err(mem::take(&mut parser.diagnostics))
+            Err(mem::take(&mut parser.errors))
         }
     }
 
@@ -62,7 +34,7 @@ impl Parser {
         let tokens = tokens.into_iter().filter(Token::is_usable_token).collect();
 
         Parser {
-            diagnostics,
+            errors: diagnostics,
             tokens,
             position: 0,
         }
@@ -98,7 +70,7 @@ impl Parser {
                 "Error at input index {}. Expected {:#?} but found {:#?} '{:#?}'",
                 current.index, kind, current.kind, current.value
             );
-            self.diagnostics.push(error_str);
+            self.errors.push(error_str);
             Token::new(kind, self.position, "".to_owned())
         }
     }
@@ -109,7 +81,6 @@ impl Parser {
     }
 
     fn parse_binary_expression(&mut self, lp: u8) -> Node {
-        
         let mut left = self.parse_unary_expression();
 
         loop {
@@ -127,18 +98,40 @@ impl Parser {
     }
 
     fn parse_unary_expression(&mut self) -> Node {
-        // doesnt parse repeating minus signs
+        let mut node;
+        if 0 < self.current().get_unary_precedence() {
+            let token = self.next_token();
+            let expression = self.parse_unary_expression();
+            node = Node::Unary(UnaryNode::new(token, expression));
+        } else {
+            node = self.parse_function_call();
+        }
+        node
+    }
+
+    fn parse_function_call(&mut self) -> Node {
         let mut node;
 
-        if self.current().kind == TokenKind::Minus {
-            let unary_token = self.get_match(TokenKind::Minus);
-            let expression = self.parse_unary_expression();
-            node = Node::Unary(UnaryNode::new(unary_token, expression));
+        if self.current().kind == TokenKind::FunctionCall {
+            let token = self.next_token();
+            let args = self.get_function_args();
+            let kind = FunctionKind::from(&token.value);
+            node = Node::Function(FunctionNode::new(kind, token, args));
         } else {
             node = self.parse_primary_expression();
         }
 
         node
+    }
+
+    fn get_function_args(&mut self) -> Vec<Node> {
+        self.get_match(TokenKind::OpenParenthesis);
+        let mut nodes = vec![];
+        while (self.current().kind != TokenKind::CloseParenthesis) {
+            nodes.push(self.parse_top_level());
+        }
+        self.get_match(TokenKind::CloseParenthesis);
+        nodes
     }
 
     fn parse_primary_expression(&mut self) -> Node {
@@ -164,7 +157,7 @@ impl Parser {
         let token = self.get_match(TokenKind::NumberToken);
 
         let mut node_number = token.value.parse::<f32>().unwrap_or_else(|_| {
-            self.diagnostics.push(format!(
+            self.errors.push(format!(
                 "Invalid number found {} at input index {}.",
                 token.value, token.index
             ));

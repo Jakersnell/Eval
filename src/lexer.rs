@@ -2,25 +2,10 @@ use std::str::Chars;
 
 use regex::Regex;
 
-use crate::token::{Token, TokenKind, TokenKind::*};
+use crate::token::{Token, TokenKind, TokenKind::*, PATTERNS};
 
-static PATTERNS: [(&str, TokenKind); 14] = [
-    (r"^(\s)", WhiteSpace),
-    (r"^(\+)", Plus),
-    (r"^(-)", Minus),
-    (r"^(\*\*)", DoubleStar),
-    (r"^(%)", Percent),
-    (r"^(\^)", Caret),
-    (r"^(\*)", Star),
-    (r"^(\/)", Slash),
-    (r"^(\|)", Pipe),
-    (r"^(\()", OpenParenthesis),
-    (r"^(\))", CloseParenthesis),
-    (r"^(\d+\.?\d*)", NumberToken),
-    (r"^([a-zA-Z]\w*)\(", FunctionCall),
-    ("^(\0)$", EndOfFile),
-];
 pub struct Lexer {
+    pub errors: Vec<String>,
     source: String,
     index: usize,
 }
@@ -33,6 +18,7 @@ impl Lexer {
 
     pub fn new(source: String) -> Self {
         Self {
+            errors: Vec::new(),
             source: source + "\0",
             index: 0,
         }
@@ -54,6 +40,10 @@ impl Lexer {
                 self.index += value.len() - 1;
                 break;
             }
+        }
+
+        if result_kind == BadSymbol  {
+            self.errors.push(format!("Invalid symbol {} at input index {}.", value, index));
         }
 
         Token::new(result_kind, index, value)
